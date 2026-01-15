@@ -1,0 +1,60 @@
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+name = "NutriGeneEngine"
+version = "0.1.0"
+description = "A lightweight, schema-driven Python engine for calculating personalized genetic risk scores for nutrition, athletic performance, and behavioral traits."
+readme = "README.md"
+license = "MIT"
+authors = [
+  "Enes Dedecan <enesdedecan@outlook.com>"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent",
+    "License :: OSI Approved :: MIT License",
+    "Intended Audience :: Developers",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+packages = [
+    { include = "nutrigeneengine", from = "src" }
+]
+
+[tool.poetry.urls]
+Homepage = "https://github.com/ededecan/nutrigeneengine"
+Issues = "https://github.com/ededecan/nutrigeneengine/issues"
+
+[tool.poetry.dependencies]
+python = ">=3.8"
+matplotlib = "^3.5.0"
+numpy = "^1.21.0"
+reportlab = "^4.0.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.0"
+pytest-cov = "^4.0"
+black = "^22.0"
+isort = "^5.0"
+flake8 = "^4.0"
+mypy = "^0.990"
+
+[tool.black]
+line-length = 100
+target-version = ["py39", "py310", "py311", "py312"]
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
