@@ -13,14 +13,14 @@ def sample_schema():
             "Lactose_Intolerance": {
                 "domain": "Nutrition",
                 "variants": [
-                    {"id": "rs4988235", "weight": 2.0, "max_alleles": 2},
-                    {"id": "rs182549", "weight": 1.5, "max_alleles": 2}
+                    {"rsid": "rs4988235", "weight": 2.0, "max_alleles": 2},
+                    {"rsid": "rs182549", "weight": 1.5, "max_alleles": 2}
                 ]
             },
             "Athletic_Performance": {
                 "domain": "Performance",
                 "variants": [
-                    {"id": "rs1815439", "weight": 3.0, "max_alleles": 2}
+                    {"rsid": "rs1815439", "weight": 3.0, "max_alleles": 2}
                 ]
             }
         }
@@ -44,9 +44,9 @@ def test_calculate_score_with_data(sample_schema):
     """Test score calculation with genotype data"""
     scorer = RiskScorer(sample_schema)
     genotype_data = {
-        "rs4988235": 2,
-        "rs182549": 1,
-        "rs1815439": 1
+        "rs4988235": "hom",
+        "rs182549": "het",
+        "rs1815439": "het"
     }
     
     results = scorer.calculate_score(genotype_data)
@@ -61,7 +61,7 @@ def test_calculate_score_missing_data(sample_schema):
     """Test score calculation with missing genotype data"""
     scorer = RiskScorer(sample_schema)
     genotype_data = {
-        "rs4988235": 2
+        "rs4988235": "hom"
     }
     
     results = scorer.calculate_score(genotype_data)
@@ -74,9 +74,9 @@ def test_risk_classification(sample_schema):
     """Test risk classification"""
     scorer = RiskScorer(sample_schema)
     
-    assert scorer._classify_risk(20.0) == "Low"
-    assert scorer._classify_risk(50.0) == "Medium"
-    assert scorer._classify_risk(80.0) == "High"
+    assert scorer._classify_risk(20.0) == "LOW"
+    assert scorer._classify_risk(50.0) == "MEDIUM"
+    assert scorer._classify_risk(80.0) == "HIGH"
 
 
 def test_set_thresholds(sample_schema):
@@ -85,4 +85,4 @@ def test_set_thresholds(sample_schema):
     scorer.set_thresholds(25.0, 75.0)
     
     assert scorer.thresholds == [25.0, 75.0]
-    assert scorer._classify_risk(50.0) == "Low"
+    assert scorer._classify_risk(50.0) == "MEDIUM"
