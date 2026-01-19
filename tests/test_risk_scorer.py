@@ -44,9 +44,9 @@ def test_calculate_score_with_data(sample_schema):
     """Test score calculation with genotype data"""
     scorer = RiskScorer(sample_schema)
     genotype_data = {
-        "rs4988235": "hom",
-        "rs182549": "het",
-        "rs1815439": "het"
+        "rs4988235": "AA",  # homozygous
+        "rs182549": "AG",   # heterozygous
+        "rs1815439": "TG"   # heterozygous
     }
     
     results = scorer.calculate_score(genotype_data)
@@ -61,7 +61,7 @@ def test_calculate_score_missing_data(sample_schema):
     """Test score calculation with missing genotype data"""
     scorer = RiskScorer(sample_schema)
     genotype_data = {
-        "rs4988235": "hom"
+        "rs4988235": "AA"  # homozygous
     }
     
     results = scorer.calculate_score(genotype_data)
