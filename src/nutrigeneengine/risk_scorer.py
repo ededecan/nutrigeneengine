@@ -51,14 +51,11 @@ class RiskScorer:
         Calculate risk scores for all traits.
         
         Args:
-            genotype_data: Dictionary with rsid -> zygosity (wt/het/hom) or diploid (GT/AC/CC) pairs
+            genotype_data: Dictionary with rsid -> diploid genotype (e.g., 'GG', 'GT', 'CC')
         
         Returns:
             Dictionary with calculated scores and classifications
         """
-        # Convert diploid to zygosity if needed
-        genotype_data = self._ensure_zygosity_format(genotype_data)
-        
         results = {}
         
         # Handle hierarchical schema.
@@ -74,33 +71,20 @@ class RiskScorer:
         return results
     
     
-    def _ensure_zygosity_format(self, genotype_data: Dict[str, str]) -> Dict[str, str]:
+    def _get_allele_count(self, diploid_genotype: str) -> int:
         """
-        Convert diploid format (GT, AC, CC) to zygosity (wt, het, hom) if needed.
-        Also supports direct zygosity format.
+        Get allele count from diploid genotype (e.g., 'GG'->2, 'GT'->1, 'CC'->2).
+        Returns allele count based on whether alleles are identical or different.
         """
-        if not genotype_data:
-            return genotype_data
+        if len(diploid_genotype) != 2:
+            return 0  # Missing or invalid
         
-        first_value = next(iter(genotype_data.values()), None)
-        
-        # Already zygosity format
-        if first_value in ('wt', 'het', 'hom', 'missing'):
-            return genotype_data
-        
-        # Convert diploid to zygosity
-        converted = {}
-        for rsid, genotype in genotype_data.items():
-            if len(genotype) == 2:
-                if genotype[0] == genotype[1]:
-                    converted[rsid] = 'hom'  # Homozygous
-                else:
-                    converted[rsid] = 'het'  # Heterozygous
-            else:
-                # Can't determine, skip
-                converted[rsid] = 'missing'
-        
-        return converted
+        # Same alleles = homozygous = 2 alleles
+        # Different alleles = heterozygous = 1 allele
+        if diploid_genotype[0] == diploid_genotype[1]:
+            return 2
+        else:
+            return 1
     
     def _process_group(self, group_data: Dict[str, Any], genotype_data: Dict[str, str]) -> Dict[str, Any]:
         """
@@ -137,7 +121,7 @@ class RiskScorer:
     ) -> Dict[str, Any]:
         """
         Calculate score for a single trait.
-        Uses zygosity point mapping (wt/het/hom).
+        Works directly with diploid genotypes (GG, GT, CC, etc).
         """
         variants = trait_info.get("variants", [])
         score = 0.0
@@ -153,33 +137,33 @@ class RiskScorer:
                 weight = variant['scoring'].get('default_weight', 1.0)
                 point_map = variant['scoring']['genotype_points']
                 
-                # Get zygosity value (wt/het/hom)
-                zygosity = genotype_data.get(rsid, "missing")
+                # Get diploid genotype (e.g., 'GG', 'GT', 'CC')
+                diploid = genotype_data.get(rsid, None)
                 
-                if zygosity == "missing":
+                if not diploid or len(diploid) != 2:
                     variant_details.append(f"{rsid}: Missing")
                     continue
                 
-                # Map zygosity to points
-                points = point_map.get(zygosity, 0)
+                # Get allele count and map to points
+                allele_count = self._get_allele_count(diploid)
+                points = point_map.get(str(allele_count), 0)
                 trait_score = points * weight
                 score += trait_score
-                max_possible_with_data += 2 * weight  # Max 2 alleles
-                variant_details.append(f"{rsid} ({zygosity}): {points} × {weight} = {trait_score}")
+                max_possible_with_data += 2 * weight
+                variant_details.append(f"{rsid} ({diploid}): {allele_count} alleles × {weight} = {trait_score}")
             else:
                 # Standard format with weight
-                zygosity = genotype_data.get(rsid, "missing")
-                if zygosity == "missing":
+                diploid = genotype_data.get(rsid, None)
+                if not diploid or len(diploid) != 2:
                     continue
                 
-                # Map zygosity to allele count: wt=0, het=1, hom=2
-                zygosity_map = {'wt': 0, 'het': 1, 'hom': 2}
-                allele_count = zygosity_map.get(zygosity, 0)
+                # Get allele count from diploid
+                allele_count = self._get_allele_count(diploid)
                 
                 trait_score = allele_count * weight
                 score += trait_score
                 max_possible_with_data += 2 * weight
-                variant_details.append(f"{rsid} ({zygosity}): {allele_count} × {weight} = {trait_score}")
+                variant_details.append(f"{rsid} ({diploid}): {allele_count} alleles × {weight} = {trait_score}")
         
         # Smart normalization
         if max_possible_with_data > 0:
