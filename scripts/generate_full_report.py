@@ -11,6 +11,7 @@ import json
 import sys
 import os
 from pathlib import Path
+from datetime import datetime
 
 # Python 3.8 compatibility fix for reportlab
 if sys.version_info < (3, 9):
@@ -36,6 +37,93 @@ sys.path.insert(0, os.path.join(PROJECT_ROOT, 'src'))
 
 # Import NutriGeneEngine classes
 from nutrigeneengine import RiskScorer, Visualizer, PDFReportGenerator
+
+
+def create_comprehensive_json(results, schema, language='en'):
+    """
+    Create comprehensive JSON with all details from the PDF report.
+    
+    Args:
+        results: Risk scores dictionary
+        schema: Schema data
+        language: 'en' or 'tr'
+    
+    Returns:
+        Dictionary with comprehensive report data
+    """
+    # Filter out informational traits
+    filtered_results = {k: v for k, v in results.items() 
+                       if k not in ['Informational', 'Bilgilendirici']}
+    
+    # Organize by group
+    groups_data = {}
+    for trait_name, result in filtered_results.items():
+        group_name = result.get('group_name', 'Unknown')
+        if group_name not in groups_data:
+            groups_data[group_name] = []
+        groups_data[group_name].append((trait_name, result))
+    
+    # Build comprehensive report
+    report = {
+        'metadata': {
+            'generated': datetime.now().isoformat(),
+            'language': language,
+            'title': 'Genetic Risk Assessment Report' if language == 'en' else 'Genetik Risk Değerlendirme Raporu'
+        },
+        'summary': {
+            'total_traits': len(filtered_results),
+            'low_risk_count': sum(1 for r in filtered_results.values() if r.get('percentage', 0) <= 33),
+            'medium_risk_count': sum(1 for r in filtered_results.values() if 33 < r.get('percentage', 0) <= 66),
+            'high_risk_count': sum(1 for r in filtered_results.values() if r.get('percentage', 0) > 66),
+        },
+        'risk_categories': {}
+    }
+    
+    # Add detailed trait information organized by category
+    for group_name in sorted(groups_data.keys()):
+        traits = sorted(groups_data[group_name], key=lambda x: x[1].get('percentage', 0), reverse=True)
+        
+        category_data = {
+            'traits': []
+        }
+        
+        for trait_name, trait_result in traits:
+            trait_info = {
+                'name': trait_name,
+                'percentage': trait_result.get('percentage', 0),
+                'classification': trait_result.get('classification', 'UNKNOWN'),
+                'group_name': trait_result.get('group_name', 'Unknown'),
+                'variants': []
+            }
+            
+            # Find variant details from schema
+            if schema and 'taxonomy' in schema:
+                for group in schema.get('taxonomy', {}).get('top_groups', []):
+                    for trait in group.get('traits', []):
+                        if trait.get('name') == trait_name:
+                            for variant in trait.get('variants', []):
+                                variant_info = {
+                                    'rsid': variant.get('rsid', 'N/A'),
+                                    'gene': variant.get('gene', {}).get('name', 'Unknown') if isinstance(variant.get('gene'), dict) else variant.get('gene', 'Unknown'),
+                                    'effect_notes': variant.get('effect', {}).get('notes', {}),
+                                    'references': []
+                                }
+                                
+                                # Add references/studies
+                                studies = variant.get('effect', {}).get('studies', [])
+                                for study in studies:
+                                    variant_info['references'].append({
+                                        'title': study.get('title', 'N/A'),
+                                        'url': study.get('url', '')
+                                    })
+                                
+                                trait_info['variants'].append(variant_info)
+            
+            category_data['traits'].append(trait_info)
+        
+        report['risk_categories'][group_name] = category_data
+    
+    return report
 
 
 
@@ -73,10 +161,11 @@ def generate_reports_for_file(input_file):
         # Calculate scores
         results = risk_scorer.calculate_score(user_genome)
         
-        # Save results as JSON with correct naming
+        # Save comprehensive results as JSON with all details
+        comprehensive_json = create_comprehensive_json(results, risk_scorer.schema, language='en')
         json_output_path = os.path.join(OUTPUT_DIR, f"{filename_base}_risk_results.json")
-        with open(json_output_path, 'w') as f:
-            json.dump(results, f, indent=2)
+        with open(json_output_path, 'w', encoding='utf-8') as f:
+            json.dump(comprehensive_json, f, indent=2, ensure_ascii=False)
         
         # Generate visualizations (English)
         visualizer = Visualizer(results, risk_scorer.schema, language='en')
@@ -126,6 +215,15 @@ def generate_reports_for_file(input_file):
                 pdf_output_path_tr = os.path.join(OUTPUT_DIR, f"{filename_base}_risk_report_TR.pdf")
                 pdf_generator_tr.generate_report(pdf_output_path_tr, profile_name=filename_base)
             except Exception as e:
+                pass
+            
+            # Save comprehensive JSON report (Turkish)
+            try:
+                json_output_path_tr = os.path.join(OUTPUT_DIR, f"{filename_base}_risk_results_TR.json")
+                comprehensive_json_tr = create_comprehensive_json(results_tr, risk_scorer_tr.schema, language='tr')
+                with open(json_output_path_tr, 'w', encoding='utf-8') as f:
+                    json.dump(comprehensive_json_tr, f, indent=2, ensure_ascii=False)
+            except:
                 pass
         
         return True
