@@ -122,6 +122,7 @@ class RiskScorer:
         """
         Calculate score for a single trait.
         Works directly with diploid genotypes (GG, GT, CC, etc).
+        Handles risk_up, risk_down, contextual, and neutral variants.
         """
         variants = trait_info.get("variants", [])
         score = 0.0
@@ -131,6 +132,15 @@ class RiskScorer:
         for variant in variants:
             rsid = variant.get("rsid")
             weight = variant.get("weight", 1.0)
+            
+            # Get effect direction (default: risk_up for backward compatibility)
+            effect = variant.get("effect", {})
+            direction = effect.get("direction", "risk_up")
+            
+            # Skip neutral variants (they don't contribute to risk score)
+            if direction == "neutral":
+                variant_details.append(f"{rsid}: Neutral (phenotypic only, not scored)")
+                continue
             
             # Support genotype point mapping
             if 'scoring' in variant and 'genotype_points' in variant['scoring']:
@@ -147,12 +157,35 @@ class RiskScorer:
                 # Get allele count and map to points
                 allele_count = self._get_allele_count(diploid)
                 points = point_map.get(str(allele_count), 0)
-                trait_score = points * weight
+                
+                # Apply direction-specific scoring
+                if direction == "risk_up":
+                    # Standard: more alternate alleles = higher risk
+                    trait_score = points * weight
+                    
+                elif direction == "risk_down":
+                    # Inverted: fewer alternate alleles = higher risk (more favorable = lower score)
+                    # Invert the points: (2 - points)
+                    inverted_points = (2 - points) if points in [0, 1, 2] else 0
+                    trait_score = inverted_points * weight
+                    
+                elif direction == "contextual":
+                    # Neutral scoring: no directional bias
+                    trait_score = points * weight
+                else:
+                    trait_score = 0
+                
                 score += trait_score
                 max_possible_with_data += 2 * weight
-                variant_details.append(f"{rsid} ({diploid}): {allele_count} alleles × {weight} = {trait_score}")
+                
+                # Enhanced detail reporting
+                direction_label = f"[{direction.upper()}]"
+                variant_details.append(
+                    f"{rsid} ({diploid}): {allele_count} alleles → {points} points "
+                    f"({direction_label}) × {weight}w = {trait_score}"
+                )
             else:
-                # Standard format with weight
+                # Standard format with weight (legacy support)
                 diploid = genotype_data.get(rsid, None)
                 if not diploid or len(diploid) != 2:
                     continue
@@ -160,10 +193,23 @@ class RiskScorer:
                 # Get allele count from diploid
                 allele_count = self._get_allele_count(diploid)
                 
-                trait_score = allele_count * weight
+                # Apply direction-specific scoring
+                if direction == "risk_up":
+                    trait_score = allele_count * weight
+                elif direction == "risk_down":
+                    trait_score = (2 - allele_count) * weight
+                elif direction == "contextual":
+                    trait_score = allele_count * weight
+                else:
+                    trait_score = 0
+                
                 score += trait_score
                 max_possible_with_data += 2 * weight
-                variant_details.append(f"{rsid} ({diploid}): {allele_count} alleles × {weight} = {trait_score}")
+                
+                direction_label = f"[{direction.upper()}]"
+                variant_details.append(
+                    f"{rsid} ({diploid}): {allele_count} alleles ({direction_label}) × {weight} = {trait_score}"
+                )
         
         # Smart normalization
         if max_possible_with_data > 0:
