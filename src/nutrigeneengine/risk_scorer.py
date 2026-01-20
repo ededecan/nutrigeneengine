@@ -89,8 +89,10 @@ class RiskScorer:
     def _process_group(self, group_data: Dict[str, Any], genotype_data: Dict[str, str]) -> Dict[str, Any]:
         """
         Recursively process hierarchical groups.
+        Adds group_name to each result for proper categorization in visualizations.
         """
         results = {}
+        group_name = group_data.get('name', 'Unknown')
         
         for trait in group_data.get('traits', []):
             if 'subtraits' in trait:
@@ -101,6 +103,7 @@ class RiskScorer:
                         subtrait, 
                         genotype_data
                     )
+                    result['group_name'] = group_name  # Add group name for categorization
                     results[subtrait['name']] = result
             elif 'variants' in trait:
                 # Process direct trait
@@ -109,6 +112,7 @@ class RiskScorer:
                     trait, 
                     genotype_data
                 )
+                result['group_name'] = group_name  # Add group name for categorization
                 results[trait['name']] = result
         
         return results

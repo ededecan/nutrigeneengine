@@ -22,15 +22,37 @@ class Visualizer:
     Attributes:
         results: Dictionary of risk assessment results
         schema: Schema information for domain mapping
+        language: Language for labels ('en' or 'tr')
     """
     
-    def __init__(self, results: Dict[str, Any], schema: Optional[Dict[str, Any]] = None):
+    # Label translations
+    LABELS = {
+        'en': {
+            'risk_score': 'Risk Percentage (%)',
+            'overall_summary': 'Overall Genetic Risk Summary',
+            'low_risk': 'Low Risk (0-33)',
+            'medium_risk': 'Medium Risk (34-66)',
+            'high_risk': 'High Risk (67-100)',
+            'risk_factors': 'Risk Factors'
+        },
+        'tr': {
+            'risk_score': 'Risk Oranı (0-100)',
+            'overall_summary': 'Genel Risk Özeti',
+            'low_risk': 'Düşük Risk (0-33)',
+            'medium_risk': 'Orta Risk (34-66)',
+            'high_risk': 'Yüksek Risk (67-100)',
+            'risk_factors': 'Risk Faktörleri'
+        }
+    }
+    
+    def __init__(self, results: Dict[str, Any], schema: Optional[Dict[str, Any]] = None, language: str = 'en'):
         """
         Initialize the visualizer.
         
         Args:
             results: Dictionary of calculated risk scores
             schema: Optional schema for domain information
+            language: 'en' for English or 'tr' for Turkish
         """
         if not MATPLOTLIB_AVAILABLE:
             raise ImportError("matplotlib is required for visualization. "
@@ -38,10 +60,14 @@ class Visualizer:
         
         self.results = results
         self.schema = schema or {}
+        self.language = language
+        self.labels = self.LABELS.get(language, self.LABELS['en'])
     
     def plot_summary_dashboard(self, output_path: Optional[str] = None) -> None:
         """
         Generate a summary dashboard showing all traits ranked by risk.
+        Filters out Informational/Bilgilendirici traits.
+        Uses language-appropriate labels (English or Turkish).
         
         Args:
             output_path: Optional path to save the figure
@@ -49,8 +75,12 @@ class Visualizer:
         import matplotlib.pyplot as plt
         import numpy as np
         
+        # Filter out informational traits
+        filtered_results = {k: v for k, v in self.results.items() 
+                          if k not in ['Informational', 'Bilgilendirici']}
+        
         traits = sorted(
-            self.results.items(),
+            filtered_results.items(),
             key=lambda x: x[1].get("percentage", 0),
             reverse=True
         )
@@ -62,8 +92,8 @@ class Visualizer:
         fig, ax = plt.subplots(figsize=(12, 8))
         bars = ax.barh(trait_names, percentages, color=colors_list)
         
-        ax.set_xlabel("Risk Percentage (%)", fontsize=12, fontweight="bold")
-        ax.set_title("Overall Genetic Risk Summary", fontsize=14, fontweight="bold")
+        ax.set_xlabel(self.labels['risk_score'], fontsize=12, fontweight="bold")
+        ax.set_title(self.labels['overall_summary'], fontsize=14, fontweight="bold")
         ax.set_xlim(0, 100)
         
         # Add percentage labels on bars
@@ -74,6 +104,15 @@ class Visualizer:
         ax.axvline(x=33, color='gray', linestyle=':', linewidth=1)
         ax.axvline(x=66, color='gray', linestyle=':', linewidth=1)
         
+        # Legend with language-appropriate labels
+        from matplotlib.patches import Patch
+        legend_elements = [
+            Patch(facecolor='#4CAF50', label=self.labels['low_risk']),
+            Patch(facecolor='#FFC107', label=self.labels['medium_risk']),
+            Patch(facecolor='#F44336', label=self.labels['high_risk'])
+        ]
+        ax.legend(handles=legend_elements, loc='lower right')
+        
         plt.tight_layout()
         
         if output_path:
@@ -83,52 +122,65 @@ class Visualizer:
         
         plt.close()
     
-    def plot_domain_charts(self, output_dir: Optional[str] = None) -> None:
+    def plot_domain_charts(self, output_dir: Optional[str] = None, filename_base: Optional[str] = None, 
+                          suffix: str = "") -> None:
         """
-        Generate separate charts for each domain.
+        Generate separate charts for each domain/group.
+        Filters out Informational/Bilgilendirici traits and organizes by group_name from results.
         
         Args:
             output_dir: Optional directory to save the figures
+            filename_base: Optional base filename for output (used with _group_risk_graphs suffix)
+            suffix: Optional suffix for filename (e.g., '_TR' for Turkish)
         """
-        # Group results by domain
-        domain_results = {}
-        for trait_name, result in self.results.items():
-            domain = result.get("domain", "Unknown")
-            if domain not in domain_results:
-                domain_results[domain] = {}
-            domain_results[domain][trait_name] = result
+        # Filter out informational traits
+        filtered_results = {k: v for k, v in self.results.items() 
+                          if k not in ['Informational', 'Bilgilendirici']}
         
-        # Create a chart for each domain
-        for domain, traits in domain_results.items():
-            self._plot_domain_chart(domain, traits, output_dir)
-    
-    def _plot_domain_chart(self, domain: str, traits: Dict[str, Any], 
-                          output_dir: Optional[str] = None) -> None:
-        """Generate a chart for a specific domain."""
-        trait_names = list(traits.keys())
-        percentages = [traits[t]["percentage"] for t in trait_names]
-        colors = [self._get_color_for_percentage(p) for p in percentages]
+        # Group results by group_name from the results themselves
+        groups_data = {}
+        for trait_name, result in filtered_results.items():
+            group_name = result.get('group_name', 'Unknown')
+            if group_name not in groups_data:
+                groups_data[group_name] = []
+            groups_data[group_name].append((trait_name, result))
         
-        fig, ax = plt.subplots(figsize=(10, 6))
-        bars = ax.bar(range(len(trait_names)), percentages, color=colors)
+        if not groups_data:
+            return
         
-        ax.set_xticks(range(len(trait_names)))
-        ax.set_xticklabels(trait_names, rotation=45, ha="right")
-        ax.set_ylabel("Risk Percentage (%)", fontsize=12, fontweight="bold")
-        ax.set_title(f"{domain} - Genetic Risk Assessment", 
-                    fontsize=14, fontweight="bold")
-        ax.set_ylim(0, 100)
+        # Create a chart for each group
+        num_groups = len(groups_data)
+        fig, axes = plt.subplots(nrows=num_groups, ncols=1, figsize=(10, 5 * num_groups))
+        if num_groups == 1:
+            axes = [axes]
         
-        # Add percentage labels on bars
-        for bar, pct in zip(bars, percentages):
-            height = bar.get_height()
-            ax.text(bar.get_x() + bar.get_width()/2., height + 2,
-                   f"{pct:.1f}%", ha="center", va="bottom", fontweight="bold")
+        for ax, (group_name, traits) in zip(axes, sorted(groups_data.items())):
+            # Sort traits in descending order by percentage (highest risk first)
+            sorted_traits = sorted(traits, key=lambda x: x[1]["percentage"], reverse=True)
+            trait_names = [t[0] for t in sorted_traits]
+            percentages = [t[1]["percentage"] for t in sorted_traits]
+            colors = [self._get_color_for_percentage(p) for p in percentages]
+            
+            y_pos = np.arange(len(trait_names))
+            ax.barh(y_pos, percentages, color=colors, height=0.6)
+            ax.set_yticks(y_pos)
+            ax.set_yticklabels(trait_names)
+            ax.set_xlim(0, 100)
+            ax.set_xlabel(self.labels['risk_score'], fontsize=11, fontweight="bold")
+            ax.set_title(f"{self.labels['risk_factors']}: {group_name}", fontsize=12, fontweight="bold")
+            ax.grid(axis='x', linestyle='--', alpha=0.7)
+            
+            # Add threshold lines
+            ax.axvline(x=33, color='gray', linestyle=':', linewidth=1)
+            ax.axvline(x=66, color='gray', linestyle=':', linewidth=1)
         
         plt.tight_layout()
         
         if output_dir:
-            filename = f"{output_dir}/{domain.replace(' ', '_')}_risk_chart.png"
+            if filename_base:
+                filename = f"{output_dir}/{filename_base}_group_risk_graphs{suffix}.png"
+            else:
+                filename = f"{output_dir}/group_risk_graphs{suffix}.png"
             plt.savefig(filename, dpi=300, bbox_inches="tight")
         else:
             plt.show()
